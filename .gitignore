@@ -1,0 +1,21 @@
+# Local secrets and environment
+.env
+*.env.local
+secrets/
+*.key
+*.pem
+*.p12
+*.pfx
+
+# Test/output artefacts
+state/
+backups/
+tmp/
+*.log
+*.bak
+*.orig
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
