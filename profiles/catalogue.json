@@ -1,0 +1,97 @@
+{
+  "version": 1,
+  "baseline": "ONLYOFFICE Workspace Community Server 12.8.0.1971",
+  "profiles": [
+    {
+      "id": "amazon-s3",
+      "name": "Amazon S3",
+      "family": "s3",
+      "engine": "native-s3",
+      "status": "planned",
+      "capabilities": { "primaryStorage": true, "backupDestination": true, "cdn": true, "experimental": false },
+      "fields": ["bucket", "region", "acesskey", "secretaccesskey", "sse", "ssekey"],
+      "notes": "Preserve stock ONLYOFFICE AWS behaviour and region handling."
+    },
+    {
+      "id": "custom-s3",
+      "name": "S3-Compatible Object Storage",
+      "family": "s3",
+      "engine": "native-s3",
+      "status": "planned",
+      "capabilities": { "primaryStorage": true, "backupDestination": true, "cdn": true, "experimental": false },
+      "fields": ["serviceurl", "region", "bucket", "acesskey", "secretaccesskey", "forcepathstyle", "usehttp", "sse", "ssekey"],
+      "notes": "Generic profile exposing the S3 compatibility properties already present in ONLYOFFICE 12.8."
+    },
+    {
+      "id": "mega-s4",
+      "name": "MEGA S4",
+      "family": "s3",
+      "engine": "native-s3",
+      "status": "planned",
+      "capabilities": { "primaryStorage": true, "backupDestination": true, "cdn": false, "experimental": false },
+      "fields": ["serviceurl", "region", "bucket", "acesskey", "secretaccesskey", "forcepathstyle"],
+      "notes": "First hosted S3-compatible provider targeted for development testing. Endpoint defaults intentionally withheld until verified."
+    },
+    {
+      "id": "minio",
+      "name": "MinIO",
+      "family": "s3",
+      "engine": "native-s3",
+      "status": "planned",
+      "capabilities": { "primaryStorage": true, "backupDestination": true, "cdn": false, "experimental": false },
+      "defaults": { "forcepathstyle": true },
+      "fields": ["serviceurl", "region", "bucket", "acesskey", "secretaccesskey", "forcepathstyle", "usehttp"],
+      "notes": "Self-hosted S3-compatible target."
+    },
+    {
+      "id": "google-cloud-storage",
+      "name": "Google Cloud Storage",
+      "family": "native-object",
+      "engine": "native-google-cloud",
+      "status": "planned",
+      "capabilities": { "primaryStorage": true, "backupDestination": true, "cdn": false, "experimental": false },
+      "fields": ["json", "bucket"],
+      "notes": "Uses the native ASC.Data.Storage.GoogleCloud.GoogleCloudStorage handler discovered in ONLYOFFICE 12.8."
+    },
+    {
+      "id": "local-backup",
+      "name": "Local / Mounted Filesystem Backup",
+      "family": "filesystem",
+      "engine": "filesystem",
+      "status": "planned",
+      "capabilities": { "primaryStorage": false, "backupDestination": true, "cdn": false, "experimental": false },
+      "fields": ["path"],
+      "notes": "For local disk, mounted NAS, USB or other filesystem-backed backup destinations."
+    },
+    {
+      "id": "duplicati-bridge",
+      "name": "Duplicati Backup Bridge",
+      "family": "backup-bridge",
+      "engine": "duplicati",
+      "status": "planned",
+      "capabilities": { "primaryStorage": false, "backupDestination": true, "cdn": false, "experimental": false },
+      "fields": ["path"],
+      "notes": "ONLYOFFICE writes to a local staging path; Duplicati handles the remote backup destination."
+    },
+    {
+      "id": "rclone-bridge",
+      "name": "rclone Backup Bridge",
+      "family": "backup-bridge",
+      "engine": "rclone",
+      "status": "planned",
+      "capabilities": { "primaryStorage": false, "backupDestination": true, "cdn": false, "experimental": false },
+      "fields": ["remote", "path"],
+      "notes": "Backup bridge to rclone-supported remotes such as cloud drives, WebDAV and SFTP."
+    },
+    {
+      "id": "rclone-s3-gateway",
+      "name": "Experimental rclone S3 Gateway",
+      "family": "gateway",
+      "engine": "rclone-s3-gateway",
+      "status": "experimental",
+      "capabilities": { "primaryStorage": false, "backupDestination": true, "cdn": false, "experimental": true },
+      "fields": ["serviceurl", "region", "bucket", "acesskey", "secretaccesskey", "forcepathstyle"],
+      "notes": "Experimental compatibility bridge. Not recommended as production primary document storage."
+    }
+  ]
+}
