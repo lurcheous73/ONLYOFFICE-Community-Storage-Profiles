@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/lurcheous73/ONLYOFFICE-Community-Storage-Profiles/profiles/schema.json",
+  "title": "ONLYOFFICE Community Storage Profile",
+  "type": "object",
+  "required": ["id", "name", "family", "engine", "capabilities"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+    "name": { "type": "string", "minLength": 1 },
+    "family": {
+      "type": "string",
+      "enum": ["s3", "native-object", "backup-bridge", "filesystem", "gateway"]
+    },
+    "engine": {
+      "type": "string",
+      "enum": ["native-s3", "native-google-cloud", "filesystem", "duplicati", "rclone", "rclone-s3-gateway"]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["planned", "experimental", "tested-dev", "production-candidate"]
+    },
+    "capabilities": {
+      "type": "object",
+      "required": ["primaryStorage", "backupDestination"],
+      "properties": {
+        "primaryStorage": { "type": "boolean" },
+        "backupDestination": { "type": "boolean" },
+        "cdn": { "type": "boolean" },
+        "experimental": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "defaults": {
+      "type": "object",
+      "properties": {
+        "serviceurl": { "type": "string" },
+        "region": { "type": "string" },
+        "forcepathstyle": { "type": "boolean" },
+        "usehttp": { "type": "boolean" },
+        "sse": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "fields": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "bucket",
+          "region",
+          "serviceurl",
+          "acesskey",
+          "secretaccesskey",
+          "forcepathstyle",
+          "usehttp",
+          "sse",
+          "ssekey",
+          "json",
+          "path",
+          "remote",
+          "username",
+          "password"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "notes": { "type": "string" }
+  },
+  "additionalProperties": false
+}
