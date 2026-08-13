@@ -1,53 +1,112 @@
 # ONLYOFFICE Community Storage Profiles
 
-Community-driven storage profiles, S3-compatible presets, cloud integrations and self-hosted backup bridges for **ONLYOFFICE Workspace Community Server**.
+Community-driven S3-compatible storage profiles and backup integrations for **ONLYOFFICE Workspace Community Server**.
 
 > **Project status: early development / experimental.**
-> No production storage migration patch has been released yet. Initial development is based on ONLYOFFICE Workspace Community Server 12.8.0.1971 and the upstream CommunityServer v12.8 source.
+> The current development baseline is ONLYOFFICE Workspace Community Server 12.8.0.1971 with Control Panel 3.5.5.549. Do not use this project as a production storage migration tool until the migration and restore test matrix is complete.
 
-## Core design decision
+## Current architecture — v0.3
 
-The stock user-facing **Amazon AWS S3** storage slot is repurposed as **S3-Compatible Object Storage**.
-
-Internally, ONLYOFFICE keeps its existing `S3` consumer ID and `ASC.Data.Storage.S3.S3Storage` handler for backward compatibility. Amazon is no longer treated as the product or top-level storage type; it becomes one provider preset alongside MEGA S4, Wasabi, Backblaze B2 S3, Cloudflare R2, MinIO, Ceph RGW, OVHcloud and Custom.
-
-In other words:
+The project adds a **new first-class ONLYOFFICE data-store consumer**:
 
 ```text
-ONLYOFFICE internal engine: S3   (unchanged)
-User-facing storage type:   S3-Compatible Object Storage
-Provider profile:           Amazon S3 | MEGA S4 | Wasabi | B2 | R2 | MinIO | Ceph | OVH | Custom
+Internal consumer: S3Compatible
+Display name:      S3-Compatible Object Storage
+Storage handler:   ASC.Data.Storage.S3.S3Storage
 ```
 
-This preserves the existing ONLYOFFICE storage backend while removing the artificial assumption that the S3 protocol means Amazon.
+The stock ONLYOFFICE consumer named `S3` is **not renamed or overwritten**. It remains available for backward compatibility with existing Amazon S3 installations.
 
-## Why this project exists
+For a new installation, `S3Compatible` is the project-owned storage family and Amazon is simply one provider profile inside it:
 
-ONLYOFFICE Workspace 12.8 already contains more storage capability than its stock UI exposes. The existing S3 handler supports a custom service URL, region, path-style addressing, HTTP/HTTPS behaviour and server-side encryption. Google Cloud Storage also has a native storage handler.
+```text
+S3-Compatible Object Storage
+  ├─ Amazon S3
+  ├─ MEGA S4
+  ├─ Wasabi
+  ├─ Backblaze B2 S3
+  ├─ Cloudflare R2
+  ├─ MinIO
+  ├─ Ceph RGW
+  ├─ OVHcloud Object Storage
+  └─ Custom S3-Compatible Endpoint
+```
 
-The project exposes those capabilities through provider-neutral profiles rather than adding a separate implementation for every S3-compatible vendor.
+This gives Community Storage Profiles its own consumer identity and credential namespace while reusing ONLYOFFICE's existing, tested S3 storage implementation.
 
-Primary storage and backup destinations remain separate concepts so inexpensive cloud drives, NAS targets and backup bridges are not misrepresented as safe live document storage.
+## Why a separate consumer?
 
-## Design goals
+ONLYOFFICE loads data-store consumers from configuration and resolves them by name. The selected consumer supplies a `handlerType`, which is instantiated as the actual storage engine.
 
-- Keep the internal ONLYOFFICE `S3` engine and settings compatibility intact.
-- Replace user-facing **Amazon AWS S3** with **S3-Compatible Object Storage**.
-- Make Amazon S3 a preset inside the generic S3-compatible storage family.
-- Provide maintained presets for common S3-compatible providers.
-- Use native ONLYOFFICE storage handlers where they already exist.
-- Keep credentials out of source code, profile files and logs.
-- Support self-hosted and low-cost backup workflows.
-- Allow provider additions primarily as data profiles rather than provider-specific JavaScript branches.
-- Provide install, status, test and rollback tooling for supported ONLYOFFICE versions.
-- Keep primary-storage and backup-only targets clearly distinguished.
-- Keep the implementation suitable for an upstream ONLYOFFICE contribution.
+That means `S3Compatible` can point at the existing:
+
+```text
+ASC.Data.Storage.S3.S3Storage, ASC.Data.Storage
+```
+
+without forking or replacing `ASC.Data.Storage.dll`.
+
+A separate consumer also means credentials are stored under the `S3Compatible` consumer namespace rather than colliding with the stock `S3` consumer.
+
+## Existing S3-compatible capabilities in ONLYOFFICE 12.8
+
+The native S3 handler already understands:
+
+- `acesskey` — spelling retained exactly as ONLYOFFICE ships it
+- `secretaccesskey`
+- `bucket`
+- `region`
+- `serviceurl`
+- `forcepathstyle`
+- `usehttp`
+- `sse`
+- `ssekey`
+- `cname`
+- `cnamessl`
+
+`serviceurl` and `forcepathstyle` are used by the AWS SDK client for custom S3-compatible endpoints.
+
+The `cname` / `cnamessl` properties matter because ONLYOFFICE 12.8 otherwise constructs object URLs using Amazon-style `s3.<region>.amazonaws.com` roots even when a custom `serviceurl` is configured. Community Storage Profiles therefore includes optional object-base-URL fields in the generic consumer.
+
+## v0.3 developer preview
+
+`scripts/storage-profiles-v0.3.sh` currently:
+
+- adds the `S3Compatible` consumer to the active CommunityServer / TeamLabSvc consumer configurations;
+- uses the existing `ASC.Data.Storage.S3.S3Storage` handler;
+- gives the new service its own neutral icon and Third-Party Services presentation;
+- teaches Control Panel Storage, Backup and Restore to render `S3Compatible` with the existing S3 settings template;
+- adds the provider-profile selector to the primary Storage form;
+- hides the unused legacy `S3` option from the primary Storage list while preserving configured legacy Amazon S3 installations;
+- creates exact backups and a rollback manifest;
+- does **not** call the storage update API;
+- does **not** select a provider;
+- does **not** read or write credentials;
+- does **not** start document migration.
+
+The provider selector is intentionally non-activating at this stage. Provider-specific defaults will only be added after endpoint/signing/addressing behaviour has been verified against the ONLYOFFICE 12.8 AWS SDK.
+
+## Cleaning up old development experiments
+
+The v0.1 / v0.2 / v0.2.1 installers have been removed from the current branch because they explored the wrong presentation architecture.
+
+If a development system previously installed one of those experiments, run:
+
+```bash
+bash scripts/cleanup-pre-v0.3.sh cleanup
+```
+
+before installing v0.3.
+
+The experiments remain in Git history for transparency, but they are not part of the supported current tree.
 
 ## Storage families
 
 ### S3-Compatible Object Storage
 
-This is the single user-facing S3 storage type. Initial provider presets include:
+Provider profiles are metadata layered over the `S3Compatible` consumer. Profiles never contain credentials.
+
+Initial targets:
 
 - Amazon S3
 - MEGA S4
@@ -59,146 +118,109 @@ This is the single user-facing S3 storage type. Initial provider presets include
 - OVHcloud Object Storage
 - Custom S3-compatible endpoint
 
-A provider preset supplies endpoint, region/signing and addressing defaults where appropriate. Credentials are never stored in the profile catalogue.
-
 ### Native object storage
 
-- Google Cloud Storage using the existing `ASC.Data.Storage.GoogleCloud.GoogleCloudStorage` handler
-- Other native ONLYOFFICE handlers where they are useful and safe
+ONLYOFFICE 12.8 also contains a native Google Cloud Storage consumer using:
+
+```text
+ASC.Data.Storage.GoogleCloud.GoogleCloudStorage
+```
+
+That remains a separate native engine rather than being forced through the S3-compatible layer.
 
 ### Backup / bridge targets
 
-These are intentionally separate from primary document storage:
+Primary document storage and backup destinations are deliberately separate concepts. Planned backup/bridge targets include:
 
-- Local filesystem
-- NAS / mounted filesystem
+- local filesystem / mounted NAS
 - WebDAV
 - SFTP
 - Google Drive
 - OneDrive
 - Dropbox
 - Azure Blob Storage
-- Duplicati-managed backup destinations
-- rclone remotes
-- Experimental local S3 gateway using `rclone serve s3`
+- Duplicati
+- rclone
+- experimental `rclone serve s3` gateway
 
-## Current ONLYOFFICE baseline
-
-Initial development target:
-
-- ONLYOFFICE Workspace Community Server **12.8.0.1971**
-- Upstream CommunityServer tag **v12.8**
-- Existing storage API family: `settings/storage.json`
-- Existing S3 region API: `settings/storage/s3/regions.json`
-- Existing S3 engine: `ASC.Data.Storage.S3.S3Storage`
-- Existing Google Cloud engine: `ASC.Data.Storage.GoogleCloud.GoogleCloudStorage`
-
-The S3 consumer already contains these storage properties:
-
-- `bucket`
-- `region`
-- `serviceurl`
-- `forcepathstyle`
-- `usehttp`
-- `sse`
-- `ssekey`
-
-The project therefore focuses first on the Control Panel / Storage UI and provider-profile layer rather than replacing the proven S3 backend.
-
-## Architecture
-
-Profiles are metadata. Engines do the storage work.
-
-```text
-ONLYOFFICE Workspace
-        |
-        +-- S3-Compatible Object Storage   [internal engine id: S3]
-        |      +-- Amazon S3 preset
-        |      +-- MEGA S4 preset
-        |      +-- Wasabi preset
-        |      +-- B2 / R2 / MinIO / Ceph / OVH presets
-        |      +-- Custom S3 profile
-        |
-        +-- Native Google Cloud engine
-        |      +-- Google Cloud Storage
-        |
-        +-- Backup / bridge layer
-               +-- Local / NAS
-               +-- Duplicati
-               +-- rclone
-               +-- consumer cloud drives
-```
-
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+A cloud-drive or gateway target will not be represented as safe production primary storage merely because it can be made to look like S3.
 
 ## Safety model
 
-Storage changes can cause data loss. This project therefore treats the following as mandatory:
+Storage changes can cause data loss. Current project rules:
 
-1. Version preflight before modifying ONLYOFFICE files.
-2. Backup of every modified source/configuration file.
-3. Idempotent installation where practical.
-4. Explicit `status`, `test` and `rollback` operations.
-5. No credentials in repository files.
-6. Test environment before production.
-7. Selecting a different primary storage provider is treated as a migration operation, not a harmless settings save.
-8. Primary-storage testing must cover write, read, overwrite, delete, restart persistence and integrity verification.
-9. Experimental gateway targets must be labelled as such and must not silently become recommended production primary storage.
+1. Version/image preflight before modifying installed files.
+2. Backup every modified file and preserve owner/group/mode.
+3. Explicit `status` and `rollback` operations.
+4. No credentials in Git, profile JSON, logs or command examples.
+5. Installation must not auto-select `S3Compatible`.
+6. Installation must not call the storage migration API.
+7. Switching primary storage is treated as a migration event, not a harmless settings save.
+8. Provider testing must cover write, read, overwrite, delete, large objects, restart persistence and SHA-256 integrity.
+9. Restore testing is mandatory before a provider can be called production-ready.
+10. Existing configured stock `S3` installations must not be stranded by the project UI.
+
+## Current baseline
+
+- ONLYOFFICE Workspace Community Server: **12.8.0.1971**
+- Upstream CommunityServer source: **v12.8**
+- ONLYOFFICE Control Panel image: **3.5.5.549**
+- Upstream ControlPanel source: **v3.5.5**
 
 ## Repository layout
 
 ```text
-docs/        architecture, compatibility and testing notes
-profiles/    provider-neutral schemas and provider presets
-scripts/     discovery, installation, test and rollback tooling
+docs/        architecture and design notes
+profiles/    provider-neutral profile schema and catalogue
+scripts/     bootstrap, discovery, cleanup, install/status/rollback tooling
 ```
 
 ## Roadmap
 
-### Phase 1 — discovery and profile framework
+### v0.3 — first-class generic consumer
 
-- [x] Confirm ONLYOFFICE 12.8.0.1971 storage API and S3 consumer
-- [x] Confirm hidden custom S3 endpoint/path-style configuration
-- [x] Confirm native Google Cloud Storage handler
-- [x] Confirm Control Panel has a dedicated S3 storage template
-- [x] Decide to replace the user-facing Amazon slot with S3-Compatible Object Storage
-- [ ] Build provider profile loader
-- [ ] Add provider selector to the stock S3 storage form
-- [ ] Preserve Amazon compatibility as a preset
+- [x] Confirm configurable consumer registration
+- [x] Confirm arbitrary DataStoreConsumer names are supported
+- [x] Confirm storage API enumerates DataStoreConsumers
+- [x] Confirm StorageSettings resolves the selected consumer by name and handler type
+- [x] Add `S3Compatible` consumer installer
+- [x] Reuse stock `S3Storage` handler
+- [x] Add Control Panel S3-template recognition
+- [ ] Verify the new service appears correctly on the development Workspace
+- [ ] Verify credentials save to the new consumer namespace
+- [ ] Verify no legacy `S3` credential collision
 
-### Phase 2 — development Workspace
+### Provider profiles
 
-- [ ] Test MEGA S4 against a non-production Workspace
-- [ ] Small-object CRUD test
-- [ ] Large-object test
-- [ ] SHA-256 integrity verification
-- [ ] Container/service restart persistence
-- [ ] Log/credential leakage check
-- [ ] Rollback verification
-
-### Phase 3 — wider provider testing
-
+- [ ] MEGA S4 endpoint/signing/addressing verification
 - [ ] Amazon S3 compatibility regression test
-- [ ] MinIO test
-- [ ] Google Cloud native handler test
-- [ ] At least one additional hosted S3-compatible provider
-- [ ] Backup bridge proof of concept
+- [ ] MinIO controlled compatibility test
+- [ ] Wasabi test
+- [ ] Backblaze B2 S3 test
+- [ ] Cloudflare R2 test
+- [ ] Ceph RGW test
+- [ ] OVHcloud test
 
-### Phase 4 — upstream
+### Migration acceptance
 
-- [ ] Publish tested patch/release
-- [ ] Document changed upstream source files
-- [ ] Prepare upstream proposal to generalise the stock Amazon-labelled S3 slot into **S3-Compatible Object Storage**
-- [ ] Notify / submit to ONLYOFFICE upstream
+- [ ] small-object CRUD
+- [ ] large-object / multipart upload
+- [ ] SHA-256 integrity verification
+- [ ] restart persistence
+- [ ] migration from local storage
+- [ ] rollback / migration recovery
+- [ ] backup creation
+- [ ] restore from backup
+- [ ] credential/log leakage review
 
-## Contributing
+### Upstream
 
-Provider additions should prefer profile data over special-case implementation code.
+- [ ] convert the tested runtime patch into clean source diffs
+- [ ] document exact CommunityServer and ControlPanel changes
+- [ ] prepare upstream proposal for a generic S3-compatible consumer/profile layer
 
-## Licence
+## Licence and affiliation
 
-Apache License 2.0.
+Project code is intended for Apache-2.0-compatible contribution alongside the upstream ONLYOFFICE CommunityServer / ControlPanel codebases.
 
-## Trademark / affiliation
-
-This is an independent community project. It is not an official ONLYOFFICE product and is not endorsed by Ascensio System SIA unless and until an upstream contribution is accepted. ONLYOFFICE names and trademarks remain the property of their respective owners.
+This is an independent community project. It is not an official ONLYOFFICE product and is not endorsed by Ascensio System SIA unless an upstream contribution is accepted. ONLYOFFICE names and trademarks remain the property of their respective owners.
