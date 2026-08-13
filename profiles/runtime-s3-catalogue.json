@@ -3,5 +3,101 @@
   "revision": 1,
   "catalogueVersion": "2026.08.13.1",
   "updated": "2026-08-13",
-  "providers": []
+  "providers": [
+    {
+      "id": "mega-s4",
+      "name": "MEGA S4",
+      "defaults": {"region": "g", "serviceurl": "https://s3.g.megas4.com", "forcepathstyle": true, "usehttp": false},
+      "objectBase": {"http": "http://s3.g.megas4.com/{bucket}/", "https": "https://s3.g.megas4.com/{bucket}/"},
+      "note": "MEGA's S4 specification defines S3 endpoints as s3.<endpoint_domain>; the current MEGA web client uses g.megas4.com as its default S4 base domain and signs with region g.",
+      "source": "https://github.com/meganz/s4-specs"
+    },
+    {
+      "id": "wasabi",
+      "name": "Wasabi",
+      "defaults": {"forcepathstyle": true, "usehttp": false},
+      "endpointTemplate": "https://s3.{region}.wasabisys.com",
+      "objectBase": {"http": "http://s3.{region}.wasabisys.com/{bucket}/", "https": "https://s3.{region}.wasabisys.com/{bucket}/"},
+      "regions": [
+        {"id": "us-east-1", "name": "US East 1 — N. Virginia"},
+        {"id": "us-east-2", "name": "US East 2 — N. Virginia"},
+        {"id": "us-central-1", "name": "US Central 1 — Texas"},
+        {"id": "us-west-1", "name": "US West 1 — Oregon"},
+        {"id": "us-west-2", "name": "US West 2 — San Jose"},
+        {"id": "ca-central-1", "name": "CA Central 1 — Toronto"},
+        {"id": "eu-central-1", "name": "EU Central 1 — Amsterdam"},
+        {"id": "eu-central-2", "name": "EU Central 2 — Frankfurt"},
+        {"id": "eu-west-1", "name": "EU West 1 — United Kingdom"},
+        {"id": "eu-west-2", "name": "EU West 2 — Paris"},
+        {"id": "eu-west-3", "name": "EU West 3 — United Kingdom"},
+        {"id": "eu-south-1", "name": "EU South 1 — Milan"},
+        {"id": "ap-northeast-1", "name": "AP Northeast 1 — Tokyo"},
+        {"id": "ap-northeast-2", "name": "AP Northeast 2 — Osaka"},
+        {"id": "ap-southeast-1", "name": "AP Southeast 1 — Singapore"},
+        {"id": "ap-southeast-2", "name": "AP Southeast 2 — Sydney"}
+      ],
+      "note": "Choose the region containing the bucket; the endpoint is derived from that region.",
+      "source": "https://docs.wasabi.com/docs/service-urls-for-wasabis-storage-regions"
+    },
+    {
+      "id": "backblaze-b2-s3",
+      "name": "Backblaze B2 S3",
+      "defaults": {"forcepathstyle": true, "usehttp": false},
+      "endpointTemplate": "https://s3.{region}.backblazeb2.com",
+      "objectBase": {"http": "http://s3.{region}.backblazeb2.com/{bucket}/", "https": "https://s3.{region}.backblazeb2.com/{bucket}/"},
+      "regionPlaceholder": "e.g. us-west-004",
+      "note": "Use the region shown in the B2 bucket endpoint. B2 accepts HTTPS only for its S3-compatible API.",
+      "source": "https://www.backblaze.com/apidocs/introduction-to-the-s3-compatible-api"
+    },
+    {
+      "id": "cloudflare-r2",
+      "name": "Cloudflare R2",
+      "defaults": {"region": "auto", "forcepathstyle": true, "usehttp": false},
+      "serviceurlPlaceholder": "https://<ACCOUNT_ID>.r2.cloudflarestorage.com",
+      "note": "Paste the S3 API endpoint from the R2 dashboard. Region auto is required by common S3 SDK integrations; jurisdiction-specific endpoints are also supported by Cloudflare.",
+      "source": "https://developers.cloudflare.com/r2/get-started/s3/"
+    },
+    {
+      "id": "ovhcloud-object-storage",
+      "name": "OVHcloud Object Storage",
+      "defaults": {"forcepathstyle": true, "usehttp": false},
+      "endpointTemplate": "https://s3.{region}.io.cloud.ovh.net",
+      "objectBase": {"http": "http://s3.{region}.io.cloud.ovh.net/{bucket}/", "https": "https://s3.{region}.io.cloud.ovh.net/{bucket}/"},
+      "regionPlaceholder": "OVHcloud region in lowercase",
+      "note": "Use the exact endpoint shown for the bucket if it differs; OVHcloud also operates other Object Storage endpoint families.",
+      "source": "https://help.ovhcloud.com/"
+    },
+    {
+      "id": "minio",
+      "name": "MinIO",
+      "defaults": {"forcepathstyle": true, "usehttp": false},
+      "serviceurlPlaceholder": "https://minio.example.com",
+      "note": "Self-hosted: enter the endpoint and signing region used by your MinIO deployment.",
+      "source": "https://min.io/"
+    },
+    {
+      "id": "ceph-rgw",
+      "name": "Ceph RGW",
+      "defaults": {"forcepathstyle": true, "usehttp": false},
+      "serviceurlPlaceholder": "https://rgw.example.com",
+      "note": "Self-hosted: enter the RGW endpoint and region configured by your Ceph deployment.",
+      "source": "https://docs.ceph.com/"
+    },
+    {
+      "id": "amazon-s3",
+      "name": "Amazon S3",
+      "defaults": {"forcepathstyle": false, "usehttp": false},
+      "endpointTemplate": "",
+      "objectBase": {"http": "http://s3.{region}.amazonaws.com/{bucket}/", "https": "https://s3.{region}.amazonaws.com/{bucket}/"},
+      "note": "Compatibility preset. Leave service URL blank so the ONLYOFFICE/AWS SDK uses the selected region endpoint.",
+      "source": "https://docs.aws.amazon.com/AmazonS3/latest/userguide/Welcome.html"
+    },
+    {
+      "id": "custom-s3",
+      "name": "Custom S3-Compatible Endpoint",
+      "defaults": {},
+      "note": "No defaults are applied. Enter the endpoint, region, bucket and addressing mode required by the service.",
+      "source": ""
+    }
+  ]
 }
