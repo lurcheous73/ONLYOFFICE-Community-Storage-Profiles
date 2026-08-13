@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ONLYOFFICE Community Storage Profiles
-# v0.1 developer preview for ONLYOFFICE Workspace Community Server 12.8.0.1971
+# v0.1.1 developer preview for ONLYOFFICE Workspace Community Server 12.8.0.1971
 #
 # This patch DOES NOT migrate or reconfigure document storage.
 # It only exposes existing hidden S3-compatible consumer properties:
@@ -22,13 +22,22 @@ TEAMLAB="/var/www/onlyoffice/Services/TeamLabSvc/web.consumers.config"
 EXPECTED_WEBSTUDIO_SHA="e23a225eab3d17125a0c8961e2d842f385249a11d7a2bf1f13d3e2fc1f3ccc2b"
 EXPECTED_TEAMLAB_SHA="e23a225eab3d17125a0c8961e2d842f385249a11d7a2bf1f13d3e2fc1f3ccc2b"
 
+TMP_DIR=""
+
 say() { printf '%s\n' "$*"; }
 die() { say "ERROR: $*" >&2; exit 1; }
+
+cleanup() {
+  if [ -n "${TMP_DIR:-}" ] && [ -d "$TMP_DIR" ]; then
+    rm -rf -- "$TMP_DIR"
+  fi
+}
+trap cleanup EXIT
 
 banner() {
   cat <<'EOF'
 ====================================================================
- ONLYOFFICE Community Storage Profiles — v0.1 developer preview
+ ONLYOFFICE Community Storage Profiles — v0.1.1 developer preview
 ====================================================================
 EOF
 }
@@ -50,14 +59,27 @@ sha_live() {
   docker exec "$COMM" sha256sum "$1" | awk '{print $1}'
 }
 
+file_meta() {
+  docker exec "$COMM" stat -c '%u:%g:%a' "$1"
+}
+
+restore_meta() {
+  local path="$1" meta="$2" uid gid mode
+  uid="${meta%%:*}"
+  meta="${meta#*:}"
+  gid="${meta%%:*}"
+  mode="${meta##*:}"
+  docker exec "$COMM" chown "$uid:$gid" "$path"
+  docker exec "$COMM" chmod "$mode" "$path"
+}
+
 s3_section() {
   local path="$1"
   docker exec "$COMM" sh -lc "awk '/<component name=\"S3\" /{p=1} p{print} p && /<\\/component>/{exit}' '$path'"
 }
 
 is_exposed() {
-  local path="$1"
-  local section
+  local path="$1" section
   section="$(s3_section "$path")"
   grep -q 'key="serviceurl".*optional="true"' <<<"$section" || return 1
   grep -q 'key="forcepathstyle".*optional="true"' <<<"$section" || return 1
@@ -79,17 +101,24 @@ wait_container() {
 }
 
 patch_copy() {
-  local src="$1"
-  local dst="$2"
+  local src="$1" dst="$2"
   python3 - "$src" "$dst" <<'PY'
-import re, sys
+import re
+import sys
 from pathlib import Path
 
 src = Path(sys.argv[1])
 dst = Path(sys.argv[2])
 text = src.read_text(encoding="utf-8")
 
-matches = list(re.finditer(r'<component name="S3"\b.*?</component>', text, flags=re.S))
+# Match the S3 component robustly. The old v0.1 matcher used \b after the
+# closing quote in name="S3", which cannot match because quote+space are
+# both non-word characters.
+component_re = re.compile(
+    r'<component\b(?=[^>]*\bname="S3")[^>]*>.*?</component>',
+    flags=re.S,
+)
+matches = list(component_re.finditer(text))
 if len(matches) != 1:
     raise SystemExit(f"expected exactly one S3 component, found {len(matches)}")
 
@@ -98,7 +127,7 @@ section = m.group(0)
 original = section
 
 for key in ("serviceurl", "forcepathstyle", "usehttp"):
-    pattern = rf'(<item key="{key}"\s+value=""\s+)hidden="true"\s+(optional="true"\s*/>)'
+    pattern = rf'(<item\s+key="{key}"\s+value="")\s+hidden="true"(\s+optional="true"\s*/>)'
     section, count = re.subn(pattern, r'\1\2', section, count=1)
     if count != 1:
         raise SystemExit(f"expected one hidden {key} property in S3 component, changed {count}")
@@ -111,10 +140,42 @@ dst.write_text(new_text, encoding="utf-8")
 PY
 }
 
+verify_expected_diff() {
+  python3 - "$1" "$2" <<'PY'
+import sys
+from pathlib import Path
+
+old = Path(sys.argv[1]).read_text(encoding="utf-8").splitlines()
+new = Path(sys.argv[2]).read_text(encoding="utf-8").splitlines()
+if len(old) != len(new):
+    raise SystemExit("line count changed unexpectedly")
+
+allowed = {"serviceurl", "forcepathstyle", "usehttp"}
+changed = [(a, b) for a, b in zip(old, new) if a != b]
+if len(changed) != 3:
+    raise SystemExit(f"expected exactly 3 changed lines, got {len(changed)}")
+
+seen = set()
+for before, after in changed:
+    key = next((k for k in allowed if f'key="{k}"' in before), None)
+    if key is None or key in seen:
+        raise SystemExit(f"unexpected changed line: {before}")
+    if 'hidden="true"' not in before or 'hidden="true"' in after:
+        raise SystemExit(f"unexpected transformation for {key}")
+    if 'optional="true"' not in before or 'optional="true"' not in after:
+        raise SystemExit(f"optional flag changed for {key}")
+    seen.add(key)
+
+if seen != allowed:
+    raise SystemExit(f"missing expected changes: {sorted(allowed-seen)}")
+PY
+}
+
 preflight_common() {
   need docker
   need python3
   need sha256sum
+  need stat
   container_ok
   local version
   version="$(detect_version)"
@@ -148,7 +209,6 @@ status() {
 
   if [ -f "$STATE_FILE" ]; then
     say "Patch state: PRESENT ($STATE_FILE)"
-    # State contains paths/hashes only, never credentials.
     sed 's/^/  /' "$STATE_FILE"
   else
     say "Patch state: ABSENT"
@@ -167,17 +227,17 @@ install_patch() {
     exit 0
   fi
 
-  local wsha tsha
+  local wsha tsha wmeta tmeta stamp backup
   wsha="$(sha_live "$WEBSTUDIO")"
   tsha="$(sha_live "$TEAMLAB")"
   [ "$wsha" = "$EXPECTED_WEBSTUDIO_SHA" ] || die "WebStudio config hash differs from tested stock baseline; refusing to patch"
   [ "$tsha" = "$EXPECTED_TEAMLAB_SHA" ] || die "TeamLab config hash differs from tested stock baseline; refusing to patch"
 
-  local stamp backup tmp
+  wmeta="$(file_meta "$WEBSTUDIO")"
+  tmeta="$(file_meta "$TEAMLAB")"
   stamp="$(date -u +%Y%m%dT%H%M%SZ)"
   backup="$BACKUP_ROOT/v0.1-$stamp"
-  tmp="$(mktemp -d /tmp/ocsp-v01.XXXXXX)"
-  trap 'rm -rf "$tmp"' EXIT
+  TMP_DIR="$(mktemp -d /tmp/ocsp-v01.XXXXXX)"
 
   mkdir -p "$backup" "$STATE_DIR"
   chmod 700 "$backup" "$STATE_DIR"
@@ -187,49 +247,31 @@ install_patch() {
   docker cp "$COMM:$TEAMLAB" "$backup/TeamLabSvc.web.consumers.config"
   chmod 600 "$backup"/*
 
-  docker cp "$COMM:$WEBSTUDIO" "$tmp/WebStudio.original"
-  docker cp "$COMM:$TEAMLAB" "$tmp/TeamLab.original"
-  patch_copy "$tmp/WebStudio.original" "$tmp/WebStudio.patched"
-  patch_copy "$tmp/TeamLab.original" "$tmp/TeamLab.patched"
+  docker cp "$COMM:$WEBSTUDIO" "$TMP_DIR/WebStudio.original"
+  docker cp "$COMM:$TEAMLAB" "$TMP_DIR/TeamLab.original"
 
-  # Verify only the expected three hidden attributes changed in each file.
-  python3 - "$tmp/WebStudio.original" "$tmp/WebStudio.patched" "$tmp/TeamLab.original" "$tmp/TeamLab.patched" <<'PY'
-import difflib, sys
-from pathlib import Path
-
-pairs = [(sys.argv[1], sys.argv[2]), (sys.argv[3], sys.argv[4])]
-allowed = {"serviceurl", "forcepathstyle", "usehttp"}
-for oldf, newf in pairs:
-    old = Path(oldf).read_text(encoding="utf-8").splitlines()
-    new = Path(newf).read_text(encoding="utf-8").splitlines()
-    changed = [(a,b) for a,b in zip(old,new) if a != b]
-    if len(changed) != 3:
-        raise SystemExit(f"expected 3 changed lines in {oldf}, got {len(changed)}")
-    seen = set()
-    for a,b in changed:
-        key = next((k for k in allowed if f'key="{k}"' in a), None)
-        if key is None or key in seen:
-            raise SystemExit(f"unexpected changed line: {a}")
-        if 'hidden="true"' not in a or 'hidden="true"' in b:
-            raise SystemExit(f"unexpected transformation for {key}")
-        seen.add(key)
-    if seen != allowed:
-        raise SystemExit(f"missing expected changes: {allowed-seen}")
-PY
+  patch_copy "$TMP_DIR/WebStudio.original" "$TMP_DIR/WebStudio.patched"
+  patch_copy "$TMP_DIR/TeamLab.original" "$TMP_DIR/TeamLab.patched"
+  verify_expected_diff "$TMP_DIR/WebStudio.original" "$TMP_DIR/WebStudio.patched"
+  verify_expected_diff "$TMP_DIR/TeamLab.original" "$TMP_DIR/TeamLab.patched"
 
   say "Installing developer-preview UI exposure..."
-  docker cp "$tmp/WebStudio.patched" "$COMM:$WEBSTUDIO"
-  docker cp "$tmp/TeamLab.patched" "$COMM:$TEAMLAB"
+  docker cp "$TMP_DIR/WebStudio.patched" "$COMM:$WEBSTUDIO"
+  docker cp "$TMP_DIR/TeamLab.patched" "$COMM:$TEAMLAB"
+  restore_meta "$WEBSTUDIO" "$wmeta"
+  restore_meta "$TEAMLAB" "$tmeta"
 
   is_exposed "$WEBSTUDIO" || die "post-install verification failed for WebStudio"
   is_exposed "$TEAMLAB" || die "post-install verification failed for TeamLab"
 
   cat >"$STATE_FILE" <<EOF
-PATCH_VERSION=v0.1
+PATCH_VERSION=v0.1.1
 ONLYOFFICE_VERSION=$EXPECTED_VERSION
 BACKUP_DIR=$backup
 ORIGINAL_WEBSTUDIO_SHA=$EXPECTED_WEBSTUDIO_SHA
 ORIGINAL_TEAMLAB_SHA=$EXPECTED_TEAMLAB_SHA
+ORIGINAL_WEBSTUDIO_META=$wmeta
+ORIGINAL_TEAMLAB_META=$tmeta
 INSTALLED_UTC=$stamp
 EOF
   chmod 600 "$STATE_FILE"
@@ -239,7 +281,7 @@ EOF
   wait_container
 
   say
-  say "PASS: v0.1 developer preview installed."
+  say "PASS: v0.1.1 developer preview installed."
   say "No storage provider was selected and no document data was migrated."
   say "Next: open the ONLYOFFICE Storage settings page and inspect the S3 fields."
 }
@@ -251,7 +293,10 @@ rollback_patch() {
 
   # shellcheck disable=SC1090
   source "$STATE_FILE"
-  [ "${PATCH_VERSION:-}" = "v0.1" ] || die "state file is not for v0.1"
+  case "${PATCH_VERSION:-}" in
+    v0.1|v0.1.1) ;;
+    *) die "state file is not for a supported v0.1 patch" ;;
+  esac
   [ -n "${BACKUP_DIR:-}" ] || die "BACKUP_DIR missing from state file"
   [ -f "$BACKUP_DIR/WebStudio.web.consumers.config" ] || die "WebStudio backup missing"
   [ -f "$BACKUP_DIR/TeamLabSvc.web.consumers.config" ] || die "TeamLab backup missing"
@@ -259,6 +304,9 @@ rollback_patch() {
   say "Restoring stock consumer configs from: $BACKUP_DIR"
   docker cp "$BACKUP_DIR/WebStudio.web.consumers.config" "$COMM:$WEBSTUDIO"
   docker cp "$BACKUP_DIR/TeamLabSvc.web.consumers.config" "$COMM:$TEAMLAB"
+
+  if [ -n "${ORIGINAL_WEBSTUDIO_META:-}" ]; then restore_meta "$WEBSTUDIO" "$ORIGINAL_WEBSTUDIO_META"; fi
+  if [ -n "${ORIGINAL_TEAMLAB_META:-}" ]; then restore_meta "$TEAMLAB" "$ORIGINAL_TEAMLAB_META"; fi
 
   local wsha tsha
   wsha="$(sha_live "$WEBSTUDIO")"
