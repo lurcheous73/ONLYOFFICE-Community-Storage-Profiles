@@ -10,6 +10,10 @@ set -euo pipefail
 #   * stop programmatic field writes from recursively firing the previous profile
 #   * rebuild the actual production combined.*.js bundle
 #
+# The live v0.3.1.1 source marker is authoritative. A v0.3.1.1 state file is
+# useful bookkeeping but is not required, because earlier manual bundle repairs
+# could leave the working source installed without that state file.
+#
 # No credentials are read or changed. No storage API is called. No migration.
 
 CP="${OCSP_CONTROL_PANEL_CONTAINER:-onlyoffice-control-panel}"
@@ -54,7 +58,12 @@ EOF
 
 status(){
   banner
-  [ -f "$BASE_STATE" ] && say "v0.3.1.1 base: PRESENT" || say "v0.3.1.1 base: absent"
+  if docker exec "$CP" grep -Fq "$BASE_MARKER" "$SRC" 2>/dev/null; then
+    say "v0.3.1.1 live source: PRESENT"
+  else
+    say "v0.3.1.1 live source: absent"
+  fi
+  [ -f "$BASE_STATE" ] && say "v0.3.1.1 state: PRESENT" || say "v0.3.1.1 state: absent (allowed)"
   [ -f "$STATE_FILE" ] && { say "v0.3.1.2 state: PRESENT"; sed 's/^/  /' "$STATE_FILE"; } || say "v0.3.1.2 state: absent"
   if docker exec "$CP" grep -Fq "$MARKER" "$SRC" 2>/dev/null; then say "Delegated provider switching: PRESENT"; else say "Delegated provider switching: absent"; fi
   say "No credentials are read and no storage API is called by status."
@@ -64,12 +73,14 @@ install_patch(){
   banner
   command -v docker >/dev/null || die "docker not found"
   command -v python3 >/dev/null || die "python3 not found"
-  [ -f "$BASE_STATE" ] || die "v0.3.1.1 state not found"
   [ ! -f "$STATE_FILE" ] || die "v0.3.1.2 already installed; use status or rollback"
   docker inspect "$CP" >/dev/null 2>&1 || die "container not found: $CP"
   docker exec "$CP" test -f "$SRC" || die "storage.js missing"
-  docker exec "$CP" grep -Fq "$BASE_MARKER" "$SRC" || die "v0.3.1.1 marker missing from storage.js"
+  docker exec "$CP" grep -Fq "$BASE_MARKER" "$SRC" || die "v0.3.1.1 live source marker missing from storage.js"
   docker exec "$CP" grep -Fq "$MARKER" "$SRC" && die "v0.3.1.2 marker already present without state"
+  if [ ! -f "$BASE_STATE" ]; then
+    say "NOTE: v0.3.1.1 state file is absent; continuing because the verified live source marker is present."
+  fi
 
   BUNDLE="$(bundle_path)"
   stamp="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -219,13 +230,13 @@ rollback_patch(){
   [ -f "$BACKUP_DIR/storage.js" ] || die "storage.js backup missing"
   [ -f "$BACKUP_DIR/$(basename "$BUNDLE")" ] || die "bundle backup missing"
 
-  say "Restoring v0.3.1.1 source and production bundle from: $BACKUP_DIR"
+  say "Restoring pre-v0.3.1.2 source and production bundle from: $BACKUP_DIR"
   docker cp "$BACKUP_DIR/storage.js" "$CP:$SRC" >/dev/null
   docker cp "$BACKUP_DIR/$(basename "$BUNDLE")" "$CP:$BUNDLE" >/dev/null
   rm -f "$STATE_FILE"
   docker restart "$CP" >/dev/null
   wait_container
-  say "PASS: v0.3.1.2 rolled back to v0.3.1.1 presentation."
+  say "PASS: v0.3.1.2 rolled back to the exact pre-v0.3.1.2 presentation."
 }
 
 case "${1:-}" in
