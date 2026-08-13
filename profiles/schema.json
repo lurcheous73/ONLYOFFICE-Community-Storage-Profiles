@@ -15,6 +15,14 @@
       "type": "string",
       "enum": ["native-s3", "native-google-cloud", "filesystem", "duplicati", "rclone", "rclone-s3-gateway"]
     },
+    "uiRole": {
+      "type": "string",
+      "enum": ["placeholder", "preset", "standalone", "bridge"]
+    },
+    "parent": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
     "status": {
       "type": "string",
       "enum": ["planned", "experimental", "tested-dev", "production-candidate"]
