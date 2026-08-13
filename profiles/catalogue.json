@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "baseline": "ONLYOFFICE Workspace Community Server 12.8.0.1971",
   "profiles": [
     {
@@ -7,95 +7,103 @@
       "name": "S3-Compatible Object Storage",
       "family": "s3",
       "engine": "native-s3",
+      "consumer": "S3Compatible",
       "uiRole": "placeholder",
-      "status": "planned",
-      "capabilities": { "primaryStorage": true, "backupDestination": true, "cdn": true, "experimental": false },
-      "fields": ["serviceurl", "region", "bucket", "acesskey", "secretaccesskey", "forcepathstyle", "usehttp", "sse", "ssekey"],
-      "notes": "User-facing replacement for the stock Amazon AWS S3 slot. The internal ONLYOFFICE consumer id remains S3 and continues to use ASC.Data.Storage.S3.S3Storage."
+      "status": "experimental",
+      "capabilities": { "primaryStorage": true, "backupDestination": true, "cdn": false, "experimental": true },
+      "fields": ["serviceurl", "region", "bucket", "acesskey", "secretaccesskey", "forcepathstyle", "usehttp", "cname", "cnamessl", "sse", "ssekey"],
+      "notes": "First-class Community Storage Profiles consumer. Reuses ASC.Data.Storage.S3.S3Storage without renaming or overwriting the stock S3 consumer."
     },
     {
       "id": "amazon-s3",
       "name": "Amazon S3",
       "family": "s3",
       "engine": "native-s3",
+      "consumer": "S3Compatible",
       "uiRole": "preset",
       "parent": "s3-compatible",
       "status": "planned",
-      "capabilities": { "primaryStorage": true, "backupDestination": true, "cdn": true, "experimental": false },
+      "capabilities": { "primaryStorage": true, "backupDestination": true, "cdn": false, "experimental": false },
       "fields": ["bucket", "region", "acesskey", "secretaccesskey", "sse", "ssekey"],
-      "notes": "Amazon is a provider preset, not a top-level storage type. Preserve stock ONLYOFFICE AWS region and endpoint behaviour when this preset is selected."
+      "notes": "Amazon is a provider preset inside S3Compatible. The stock ONLYOFFICE S3 consumer remains available separately for legacy configurations."
     },
     {
       "id": "mega-s4",
       "name": "MEGA S4",
       "family": "s3",
       "engine": "native-s3",
+      "consumer": "S3Compatible",
       "uiRole": "preset",
       "parent": "s3-compatible",
       "status": "planned",
       "capabilities": { "primaryStorage": true, "backupDestination": true, "cdn": false, "experimental": false },
-      "fields": ["serviceurl", "region", "bucket", "acesskey", "secretaccesskey", "forcepathstyle", "usehttp"],
-      "notes": "First hosted S3-compatible provider targeted for development testing. Endpoint defaults are intentionally withheld until verified from an authoritative MEGA source or account dashboard."
+      "fields": ["serviceurl", "region", "bucket", "acesskey", "secretaccesskey", "forcepathstyle", "usehttp", "cname", "cnamessl"],
+      "notes": "First hosted S3-compatible provider targeted for development testing. Endpoint, signing-region, addressing and object-base-URL defaults remain unset until verified from an authoritative MEGA source or account dashboard."
     },
     {
       "id": "wasabi",
       "name": "Wasabi",
       "family": "s3",
       "engine": "native-s3",
+      "consumer": "S3Compatible",
       "uiRole": "preset",
       "parent": "s3-compatible",
       "status": "planned",
       "capabilities": { "primaryStorage": true, "backupDestination": true, "cdn": false, "experimental": false },
-      "fields": ["serviceurl", "region", "bucket", "acesskey", "secretaccesskey", "forcepathstyle", "usehttp"],
-      "notes": "Hosted S3-compatible preset. Endpoint and region defaults must be validated before release."
+      "fields": ["serviceurl", "region", "bucket", "acesskey", "secretaccesskey", "forcepathstyle", "usehttp", "cname", "cnamessl"],
+      "notes": "Hosted S3-compatible preset. Endpoint and URL-root defaults require validation before release."
     },
     {
       "id": "backblaze-b2-s3",
       "name": "Backblaze B2 S3",
       "family": "s3",
       "engine": "native-s3",
+      "consumer": "S3Compatible",
       "uiRole": "preset",
       "parent": "s3-compatible",
       "status": "planned",
       "capabilities": { "primaryStorage": true, "backupDestination": true, "cdn": false, "experimental": false },
-      "fields": ["serviceurl", "region", "bucket", "acesskey", "secretaccesskey", "forcepathstyle", "usehttp"],
-      "notes": "Hosted S3-compatible preset."
+      "fields": ["serviceurl", "region", "bucket", "acesskey", "secretaccesskey", "forcepathstyle", "usehttp", "cname", "cnamessl"],
+      "notes": "Hosted S3-compatible preset; compatibility and generated object URLs must be tested."
     },
     {
       "id": "cloudflare-r2",
       "name": "Cloudflare R2",
       "family": "s3",
       "engine": "native-s3",
+      "consumer": "S3Compatible",
       "uiRole": "preset",
       "parent": "s3-compatible",
       "status": "planned",
       "capabilities": { "primaryStorage": true, "backupDestination": true, "cdn": false, "experimental": false },
-      "fields": ["serviceurl", "region", "bucket", "acesskey", "secretaccesskey", "forcepathstyle", "usehttp"],
-      "notes": "Hosted S3-compatible preset. Exact signing-region behaviour must be tested against the ONLYOFFICE 12.8 AWS SDK."
+      "fields": ["serviceurl", "region", "bucket", "acesskey", "secretaccesskey", "forcepathstyle", "usehttp", "cname", "cnamessl"],
+      "notes": "Exact signing-region behaviour must be tested against the AWS SDK shipped with ONLYOFFICE 12.8."
     },
     {
       "id": "minio",
       "name": "MinIO",
       "family": "s3",
       "engine": "native-s3",
+      "consumer": "S3Compatible",
       "uiRole": "preset",
       "parent": "s3-compatible",
       "status": "planned",
       "capabilities": { "primaryStorage": true, "backupDestination": true, "cdn": false, "experimental": false },
       "defaults": { "forcepathstyle": true },
-      "fields": ["serviceurl", "region", "bucket", "acesskey", "secretaccesskey", "forcepathstyle", "usehttp"],
-      "notes": "Self-hosted S3-compatible target and useful controlled compatibility test endpoint."
+      "fields": ["serviceurl", "region", "bucket", "acesskey", "secretaccesskey", "forcepathstyle", "usehttp", "cname", "cnamessl"],
+      "notes": "Self-hosted S3-compatible target and preferred controlled compatibility test endpoint."
     },
     {
       "id": "ceph-rgw",
       "name": "Ceph RGW",
       "family": "s3",
       "engine": "native-s3",
+      "consumer": "S3Compatible",
       "uiRole": "preset",
       "parent": "s3-compatible",
       "status": "planned",
       "capabilities": { "primaryStorage": true, "backupDestination": true, "cdn": false, "experimental": false },
-      "fields": ["serviceurl", "region", "bucket", "acesskey", "secretaccesskey", "forcepathstyle", "usehttp"],
+      "fields": ["serviceurl", "region", "bucket", "acesskey", "secretaccesskey", "forcepathstyle", "usehttp", "cname", "cnamessl"],
       "notes": "Self-hosted S3-compatible target."
     },
     {
@@ -103,11 +111,12 @@
       "name": "OVHcloud Object Storage",
       "family": "s3",
       "engine": "native-s3",
+      "consumer": "S3Compatible",
       "uiRole": "preset",
       "parent": "s3-compatible",
       "status": "planned",
       "capabilities": { "primaryStorage": true, "backupDestination": true, "cdn": false, "experimental": false },
-      "fields": ["serviceurl", "region", "bucket", "acesskey", "secretaccesskey", "forcepathstyle", "usehttp"],
+      "fields": ["serviceurl", "region", "bucket", "acesskey", "secretaccesskey", "forcepathstyle", "usehttp", "cname", "cnamessl"],
       "notes": "Hosted S3-compatible preset."
     },
     {
@@ -115,18 +124,20 @@
       "name": "Custom S3-Compatible Endpoint",
       "family": "s3",
       "engine": "native-s3",
+      "consumer": "S3Compatible",
       "uiRole": "preset",
       "parent": "s3-compatible",
       "status": "planned",
-      "capabilities": { "primaryStorage": true, "backupDestination": true, "cdn": true, "experimental": false },
-      "fields": ["serviceurl", "region", "bucket", "acesskey", "secretaccesskey", "forcepathstyle", "usehttp", "sse", "ssekey"],
-      "notes": "No vendor assumptions. Exposes the generic S3 compatibility properties supported by the existing ONLYOFFICE S3 handler."
+      "capabilities": { "primaryStorage": true, "backupDestination": true, "cdn": false, "experimental": false },
+      "fields": ["serviceurl", "region", "bucket", "acesskey", "secretaccesskey", "forcepathstyle", "usehttp", "cname", "cnamessl", "sse", "ssekey"],
+      "notes": "No vendor assumptions. Exposes the generic properties supported by the existing ONLYOFFICE S3 handler."
     },
     {
       "id": "google-cloud-storage",
       "name": "Google Cloud Storage",
       "family": "native-object",
       "engine": "native-google-cloud",
+      "consumer": "GoogleCloud",
       "uiRole": "standalone",
       "status": "planned",
       "capabilities": { "primaryStorage": true, "backupDestination": true, "cdn": false, "experimental": false },
@@ -174,7 +185,7 @@
       "uiRole": "bridge",
       "status": "experimental",
       "capabilities": { "primaryStorage": false, "backupDestination": true, "cdn": false, "experimental": true },
-      "fields": ["serviceurl", "region", "bucket", "acesskey", "secretaccesskey", "forcepathstyle"],
+      "fields": ["serviceurl", "region", "bucket", "acesskey", "secretaccesskey", "forcepathstyle", "cname", "cnamessl"],
       "notes": "Experimental compatibility bridge. Not recommended as production primary document storage."
     }
   ]
