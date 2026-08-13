@@ -15,6 +15,10 @@
       "type": "string",
       "enum": ["native-s3", "native-google-cloud", "filesystem", "duplicati", "rclone", "rclone-s3-gateway"]
     },
+    "consumer": {
+      "type": "string",
+      "minLength": 1
+    },
     "uiRole": {
       "type": "string",
       "enum": ["placeholder", "preset", "standalone", "bridge"]
@@ -45,6 +49,8 @@
         "region": { "type": "string" },
         "forcepathstyle": { "type": "boolean" },
         "usehttp": { "type": "boolean" },
+        "cname": { "type": "string" },
+        "cnamessl": { "type": "string" },
         "sse": { "type": "string" }
       },
       "additionalProperties": true
@@ -61,6 +67,8 @@
           "secretaccesskey",
           "forcepathstyle",
           "usehttp",
+          "cname",
+          "cnamessl",
           "sse",
           "ssekey",
           "json",
