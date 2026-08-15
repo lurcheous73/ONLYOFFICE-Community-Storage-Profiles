@@ -46,4 +46,6 @@ PY
 
 chmod 700 "$RUNTIME"
 bash -n "$RUNTIME"
-exec bash "$RUNTIME" "${1:-status}"
+# Do not exec here: the wrapper's EXIT trap must run so the temporary runtime
+# copy is removed after both successful and failed installer invocations.
+bash "$RUNTIME" "${1:-status}"
