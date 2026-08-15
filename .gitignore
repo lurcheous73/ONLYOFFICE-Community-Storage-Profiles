@@ -14,6 +14,9 @@ tmp/
 *.log
 *.bak
 *.orig
+__pycache__/
+*.py[cod]
+scripts/.storage-profiles-v0.3.4.1-runtime.*
 
 # Editors / OS
 .DS_Store
