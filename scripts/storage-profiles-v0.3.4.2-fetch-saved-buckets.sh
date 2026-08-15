@@ -42,6 +42,12 @@ bundle_path(){
   printf '%s\n' "${b[0]}"
 }
 
+latest_partial_backup(){
+  local p
+  p="$(find "$BACKUP_ROOT" -maxdepth 1 -type d -name 'v0.3.4.2-fetch-buckets-*' -printf '%T@ %p\n' 2>/dev/null | sort -nr | awk 'NR==1{sub(/^[^ ]+ /,""); print; exit}')"
+  [ -n "$p" ] && printf '%s\n' "$p"
+}
+
 install_cmd(){
   need docker; need sha256sum
   [ -f "$SOURCE" ] || die "missing source: $SOURCE"
@@ -54,16 +60,33 @@ install_cmd(){
 
   docker exec "$CP" node --check "$UI" >/dev/null
 
-  local bundle stamp backup meta uid gid mode rest oldsha newsha ready=0
+  local bundle stamp backup meta uid gid mode rest oldsha newsha ready=0 partial=0
   bundle="$(bundle_path)"
   stamp="$(date -u +%Y%m%dT%H%M%SZ)"
-  backup="$BACKUP_ROOT/v0.3.4.2-fetch-buckets-$stamp"
-  mkdir -p "$backup" "$STATE_DIR"; chmod 700 "$backup" "$STATE_DIR"
 
-  say "Backing up current v0.3.4 UI and production bundle to: $backup"
-  docker cp "$CP:$UI" "$backup/ocsp-manual-s3-backup.js" >/dev/null
-  docker cp "$CP:$bundle" "$backup/$(basename "$bundle")" >/dev/null
-  chmod 600 "$backup/ocsp-manual-s3-backup.js" "$backup/$(basename "$bundle")"
+  # A previous v0.3.4.2 attempt may have copied the source and rebuilt the
+  # production bundle, then failed only because the readiness probe looked for
+  # a source comment. Production minification strips comments, so that was a
+  # false negative. Reuse the original pre-hotfix backup instead of taking a
+  # second backup of the already-hotfixed files.
+  if docker exec "$CP" grep -Fq 'OCSP v0.3.4.2' "$UI" 2>/dev/null; then
+    partial=1
+    backup="$(latest_partial_backup || true)"
+    [ -n "$backup" ] || die "partial v0.3.4.2 deploy detected but original backup directory was not found"
+    [ -f "$backup/ocsp-manual-s3-backup.js" ] || die "partial retry UI backup missing: $backup"
+    [ -f "$backup/$(basename "$bundle")" ] || die "partial retry bundle backup missing: $backup"
+    say "Detected prior partial v0.3.4.2 deploy; reusing original rollback snapshot: $backup"
+    oldsha="$(sha256sum "$backup/$(basename "$bundle")" | awk '{print $1}')"
+  else
+    backup="$BACKUP_ROOT/v0.3.4.2-fetch-buckets-$stamp"
+    mkdir -p "$backup" "$STATE_DIR"; chmod 700 "$backup" "$STATE_DIR"
+
+    say "Backing up current v0.3.4 UI and production bundle to: $backup"
+    docker cp "$CP:$UI" "$backup/ocsp-manual-s3-backup.js" >/dev/null
+    docker cp "$CP:$bundle" "$backup/$(basename "$bundle")" >/dev/null
+    chmod 600 "$backup/ocsp-manual-s3-backup.js" "$backup/$(basename "$bundle")"
+    oldsha="$(docker exec "$CP" sha256sum "$bundle" | awk '{print $1}')"
+  fi
 
   meta="$(docker exec "$CP" stat -c '%u:%g:%a' "$UI")"
   uid="${meta%%:*}"; rest="${meta#*:}"; gid="${rest%%:*}"; mode="${rest##*:}"
@@ -75,25 +98,28 @@ install_cmd(){
   docker exec "$CP" grep -Fq 'OCSP v0.3.4.2' "$UI" || die "v0.3.4.2 source marker missing"
   docker exec "$CP" grep -Fq 'Check connection & fetch buckets' "$UI" || die "bucket-fetch UI marker missing"
 
-  oldsha="$(docker exec "$CP" sha256sum "$bundle" | awk '{print $1}')"
   say "Rebuilding Control Panel production bundle..."
   docker exec "$CP" rm -f "$bundle"
   docker restart "$CP" >/dev/null
   wait_cp
 
+  # Do not look for the source comment in the minified production bundle:
+  # bundle generation strips comments. Check runtime strings that must survive
+  # minification instead.
   for i in $(seq 1 120); do
     if docker exec "$CP" test -f "$bundle" >/dev/null 2>&1 \
-       && docker exec "$CP" grep -aFq 'OCSP v0.3.4.2' "$bundle" >/dev/null 2>&1 \
-       && docker exec "$CP" grep -aFq 'Check connection & fetch buckets' "$bundle" >/dev/null 2>&1; then
+       && docker exec "$CP" grep -aFq 'Check connection & fetch buckets' "$bundle" >/dev/null 2>&1 \
+       && docker exec "$CP" grep -aFq '/Management.aspx?type=ThirdPartyAuthorization' "$bundle" >/dev/null 2>&1; then
       ready=1
       break
     fi
     sleep 1
   done
-  [ "$ready" = 1 ] || die "production bundle never reached v0.3.4.2 state"
+  [ "$ready" = 1 ] || die "production bundle never reached v0.3.4.2 runtime state"
 
   newsha="$(docker exec "$CP" sha256sum "$bundle" | awk '{print $1}')"
 
+  mkdir -p "$STATE_DIR"; chmod 700 "$STATE_DIR"
   cat >"$STATE_FILE" <<EOF
 VERSION=0.3.4.2-fetch-saved-buckets
 BACKUP=$backup
@@ -101,6 +127,7 @@ BUNDLE=$bundle
 INSTALLED_UTC=$stamp
 OLD_BUNDLE_SHA256=$oldsha
 NEW_BUNDLE_SHA256=$newsha
+PARTIAL_RETRY=$partial
 EOF
   chmod 600 "$STATE_FILE"
 
@@ -121,7 +148,8 @@ status_cmd(){
   bundle="$(sed -n 's/^BUNDLE=//p' "$STATE_FILE" | head -1)"
   docker exec "$CP" grep -Fq 'OCSP v0.3.4.2' "$UI" || die "v0.3.4.2 UI source marker missing"
   docker exec "$CP" grep -Fq 'Check connection & fetch buckets' "$UI" || die "bucket-fetch source marker missing"
-  docker exec "$CP" grep -aFq 'OCSP v0.3.4.2' "$bundle" || die "v0.3.4.2 bundle marker missing"
+  docker exec "$CP" grep -aFq 'Check connection & fetch buckets' "$bundle" || die "v0.3.4.2 bundle runtime string missing"
+  docker exec "$CP" grep -aFq '/Management.aspx?type=ThirdPartyAuthorization' "$bundle" || die "v0.3.4.2 saved-key runtime string missing"
   say "PASS — v0.3.4.2 saved-key bucket fetch UI present."
 }
 
