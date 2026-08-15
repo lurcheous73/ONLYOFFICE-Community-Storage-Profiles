@@ -1,4 +1,4 @@
-/* OCSP v0.3.4 — manual S3-compatible backup connection/bucket gate. */
+/* OCSP v0.3.4.2 — manual S3-compatible backup connection/bucket gate. */
 window.OCSPManualS3Backup = (function ($, apiService) {
     'use strict';
 
@@ -47,8 +47,8 @@ window.OCSPManualS3Backup = (function ($, apiService) {
 
     function connectionKey(cfg) {
         return JSON.stringify({
-            acesskey: cfg.acesskey,
-            secretaccesskey: cfg.secretaccesskey,
+            acesskey: cfg.acesskey ? 'explicit' : 'stored',
+            secretaccesskey: cfg.secretaccesskey ? 'explicit' : 'stored',
             region: cfg.region,
             serviceurl: cfg.serviceurl,
             forcepathstyle: cfg.forcepathstyle,
@@ -138,7 +138,13 @@ window.OCSPManualS3Backup = (function ($, apiService) {
 
     function ensureTools() {
         var $storage = $s3();
-        if (!$storage.length || $storage.find('.ocsp-s3-manual-tools').length) return;
+        if (!$storage.length) return;
+
+        // Internal backend compatibility values are not user-editable controls.
+        $storage.find(".flexContainer[data-id='backupchunksize']").hide();
+        $storage.find(".flexContainer[data-id='disabledefaultchecksumvalidation']").hide();
+
+        if ($storage.find('.ocsp-s3-manual-tools').length) return;
 
         var $bucketRow = $storage.find(".flexContainer[data-id='bucket']").first();
         if (!$bucketRow.length) return;
@@ -146,7 +152,7 @@ window.OCSPManualS3Backup = (function ($, apiService) {
         var html = '' +
             '<div class="ocsp-s3-manual-tools" style="margin:12px 0 16px 0;">' +
               '<div style="margin-bottom:8px;">' +
-                '<button type="button" class="button blue ocsp-s3-check">Check connection</button>' +
+                '<button type="button" class="button blue ocsp-s3-check">Check connection & fetch buckets</button>' +
                 '<span class="ocsp-s3-manual-status" style="margin-left:10px;"></span>' +
               '</div>' +
               '<div class="ocsp-s3-bucket-tools" style="display:none;">' +
@@ -170,15 +176,55 @@ window.OCSPManualS3Backup = (function ($, apiService) {
 
     function requireConfig(requireBucket) {
         var cfg = currentConfig();
-        if (!cfg.acesskey || !cfg.secretaccesskey) {
-            window.toastr.error('Enter the S3-compatible access key and secret key first.');
-            return null;
-        }
         if (requireBucket && !cfg.bucket) {
             window.toastr.error('Select or enter a bucket first.');
             return null;
         }
         return cfg;
+    }
+
+    function decodeHtml(value) {
+        var txt = document.createElement('textarea');
+        txt.innerHTML = value || '';
+        return txt.value;
+    }
+
+    function readSavedKeyFromManagement(html, id) {
+        var start = html.indexOf('id="popupDialogS3Compatible"');
+        if (start < 0) return '';
+        var end = html.indexOf('id="saveBtnS3Compatible"', start);
+        if (end < 0) end = Math.min(html.length, start + 20000);
+        var block = html.substring(start, end);
+        var escaped = id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        var re = new RegExp('<input[^>]*\\bid="' + escaped + '"[^>]*\\bvalue="([^"]*)"', 'i');
+        var match = re.exec(block);
+        return match ? decodeHtml(match[1]).trim() : '';
+    }
+
+    function resolveCredentials(cfg) {
+        if (cfg.acesskey && cfg.secretaccesskey) {
+            return $.Deferred().resolve(cfg).promise();
+        }
+
+        return $.ajax({
+            url: '/Management.aspx?type=ThirdPartyAuthorization',
+            method: 'GET',
+            dataType: 'html',
+            cache: false
+        }).then(function (html) {
+            var resolved = $.extend({}, cfg);
+            if (!resolved.acesskey) {
+                resolved.acesskey = readSavedKeyFromManagement(html, 'acesskey');
+            }
+            if (!resolved.secretaccesskey) {
+                resolved.secretaccesskey = readSavedKeyFromManagement(html, 'secretaccesskey');
+            }
+
+            if (!resolved.acesskey || !resolved.secretaccesskey) {
+                throw new Error('Saved S3Compatible access/secret keys were not found in Third-Party Services.');
+            }
+            return resolved;
+        });
     }
 
     function showBucketTools(data) {
@@ -188,8 +234,15 @@ window.OCSPManualS3Backup = (function ($, apiService) {
         if (data.listDenied) {
             setStatus(data.message || 'Bucket listing denied; enter a known bucket and validate it.', 'info');
         } else {
-            setStatus('Connection OK — choose or create a bucket.', 'ok');
+            setStatus('Connection OK — buckets fetched. Choose or create a bucket.', 'ok');
         }
+    }
+
+    function requestErrorMessage(error, fallback) {
+        if (error && error.responseJSON && error.responseJSON.message) return error.responseJSON.message;
+        if (error && error.responseText) return error.responseText;
+        if (error && error.message) return error.message;
+        return fallback;
     }
 
     function checkConnection() {
@@ -199,9 +252,14 @@ window.OCSPManualS3Backup = (function ($, apiService) {
 
         busy = true;
         resetConnection();
-        setStatus('Checking endpoint and credentials…', 'info');
+        setStatus((cfg.acesskey && cfg.secretaccesskey)
+            ? 'Checking endpoint and credentials…'
+            : 'Loading saved S3Compatible keys and fetching buckets…', 'info');
 
-        apiService.post('backup/ocspS3ListBuckets', { config: cfg })
+        resolveCredentials(cfg)
+            .then(function (resolved) {
+                return apiService.post('backup/ocspS3ListBuckets', { config: resolved });
+            })
             .done(function (response) {
                 if (!response || !response.success) {
                     setStatus((response && response.message) || 'Connection check failed.', 'error');
@@ -212,9 +270,8 @@ window.OCSPManualS3Backup = (function ($, apiService) {
                 showBucketTools(response.data || {});
                 gateStart();
             })
-            .fail(function (jqXHR) {
-                var message = jqXHR && jqXHR.responseJSON && jqXHR.responseJSON.message;
-                setStatus(message || (jqXHR && jqXHR.responseText) || 'Connection check failed.', 'error');
+            .fail(function (error) {
+                setStatus(requestErrorMessage(error, 'Connection check failed.'), 'error');
             })
             .always(function () { busy = false; });
     }
@@ -247,7 +304,10 @@ window.OCSPManualS3Backup = (function ($, apiService) {
         busy = true;
         setStatus('Creating bucket ' + bucket + '…', 'info');
 
-        apiService.post('backup/ocspS3CreateBucket', { config: cfg, bucket: bucket })
+        resolveCredentials(cfg)
+            .then(function (resolved) {
+                return apiService.post('backup/ocspS3CreateBucket', { config: resolved, bucket: bucket });
+            })
             .done(function (response) {
                 if (!response || !response.success) {
                     setStatus((response && response.message) || 'Bucket creation failed.', 'error');
@@ -263,9 +323,8 @@ window.OCSPManualS3Backup = (function ($, apiService) {
                 applyBucket(bucket);
                 setStatus('Bucket created and selected — validate it before backup.', 'ok');
             })
-            .fail(function (jqXHR) {
-                var message = jqXHR && jqXHR.responseJSON && jqXHR.responseJSON.message;
-                setStatus(message || (jqXHR && jqXHR.responseText) || 'Bucket creation failed.', 'error');
+            .fail(function (error) {
+                setStatus(requestErrorMessage(error, 'Bucket creation failed.'), 'error');
             })
             .always(function () { busy = false; });
     }
@@ -285,7 +344,10 @@ window.OCSPManualS3Backup = (function ($, apiService) {
         gateStart();
         setStatus('Validating ' + cfg.bucket + ' with a disposable 100 KiB object…', 'info');
 
-        apiService.post('backup/ocspS3ValidateBucket', { config: cfg, bucket: cfg.bucket })
+        resolveCredentials(cfg)
+            .then(function (resolved) {
+                return apiService.post('backup/ocspS3ValidateBucket', { config: resolved, bucket: cfg.bucket });
+            })
             .done(function (response) {
                 if (!response || !response.success) {
                     setStatus((response && response.message) || 'Bucket validation failed.', 'error');
@@ -296,9 +358,8 @@ window.OCSPManualS3Backup = (function ($, apiService) {
                 setStatus('Bucket validated: write/read/SHA-256/delete all passed. Make Backup is unlocked.', 'ok');
                 gateStart();
             })
-            .fail(function (jqXHR) {
-                var message = jqXHR && jqXHR.responseJSON && jqXHR.responseJSON.message;
-                setStatus(message || (jqXHR && jqXHR.responseText) || 'Bucket validation failed.', 'error');
+            .fail(function (error) {
+                setStatus(requestErrorMessage(error, 'Bucket validation failed.'), 'error');
                 gateStart();
             })
             .always(function () { busy = false; });
@@ -321,6 +382,7 @@ window.OCSPManualS3Backup = (function ($, apiService) {
             "#backupConsumerStorageSettingsBox div.storage[data-id='S3Compatible'] .textBox",
             function () {
                 var key = $(this).closest('.flexContainer').attr('data-id');
+                if (key === 'backupchunksize' || key === 'disabledefaultchecksumvalidation') return;
                 if (key === 'bucket') resetValidation('Bucket changed — validate it before backup.');
                 else resetConnection('Connection settings changed — check again.');
             });
