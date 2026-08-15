@@ -1,0 +1,1 @@
+Manual backup hardening first; nightly scheduling deferred until manual backup and restore acceptance pass.
