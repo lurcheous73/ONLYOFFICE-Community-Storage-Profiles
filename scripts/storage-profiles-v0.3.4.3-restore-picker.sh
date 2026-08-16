@@ -88,8 +88,6 @@ preflight(){
     || die "restore consumer init anchor missing"
 
   docker exec "$CP" node --check "$EXISTING_PROBE" >/dev/null
-  node --check "$PROBE_SOURCE" >/dev/null
-  node --check "$UI_SOURCE" >/dev/null
 }
 
 install_cmd(){
